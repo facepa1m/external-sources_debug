@@ -6,7 +6,7 @@ id       = "wtrlab"
 name     = "WtrLab"
 version  = "1.0.2"
 baseUrl  = "https://wtr-lab.com/"
-language = "mul"
+language = "multi"
 icon     = "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/wtr-lab.png"
 
 -- ── Settings ──────────────────────────────────────────────────────────────────
