@@ -3,14 +3,14 @@ lastUpdated: "2024-02-28T17:50:00Z"
 languages:
   en:
     name: "English"
-    count: 2
+    count: 3
     url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/en/index.yaml"
   ru:
     name: "Русский"
-    count: 1
+    count: 2
     url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/ru/index.yaml"
   multi:
     name: "Multilanguage"
     count: 1
     url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/multi/index.yaml"
-totalSources: 4
+totalSources: 6

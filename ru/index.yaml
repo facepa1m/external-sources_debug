@@ -1,6 +1,13 @@
 language: "ru"
 name: "Русский"
 sources:
+  - id: "ranobehub"
+    name: "RanobeHub (Lua)"
+    version: "1.0.0"
+    description: "Русский источник ранобэ, мигрированный из хардкода"
+    url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/ru/ranobehub.lua"
+    icon: "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/ranobehub.png"
+    language: "ru"
   - id: "ranobehub_advanced"
     name: "RanobeHub (Advanced)"
     version: "2.0.0"

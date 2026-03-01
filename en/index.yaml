@@ -1,6 +1,13 @@
 language: "en"
 name: "English"
 sources:
+  - id: "freewebnovel"
+    name: "FreeWebNovel"
+    version: "1.0.0"
+    description: "English novel source migrated from hardcoded version"
+    url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/en/freewebnovel.lua"
+    icon: "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/freewebnovel.png"
+    language: "en"
   - id: "freewebnovel_advanced"
     name: "FreeWebNovel (Advanced)"
     version: "2.0.0"
