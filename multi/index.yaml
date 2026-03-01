@@ -3,7 +3,7 @@ name: "Multilanguage"
 sources:
   - id: "wtr_lab"
     name: "WtrLab"
-    version: "1.0.0"
+    version: "1.0.1"
     description: "Multilanguage source with AES decryption and AI translation"
     url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/multi/wtrlab.lua"
     icon: "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/wtrlab.png"
