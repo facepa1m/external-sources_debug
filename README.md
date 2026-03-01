@@ -469,6 +469,86 @@ end
 
 ---
 
+## 8.1. Трансформеры обложек
+
+Многие сайты используют thumbnail или относительные URL для обложек. Трансформеры исправляют это в `getBookCoverImageUrl`.
+
+### Базовый трансформер
+
+```lua
+-- Преобразование относительных/абсолютных URL
+local function transformCoverUrl(coverUrl, bookUrl)
+  if coverUrl:find("^//") then
+    -- protocol-relative URL (//example.com/image.jpg)
+    return "https:" .. coverUrl
+  elseif coverUrl:find("^/") then
+    -- relative URL (/image.jpg)
+    return url_resolve(bookUrl, coverUrl)
+  end
+  return coverUrl
+end
+
+function getBookCoverImageUrl(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local cover = html_attr(r.body, "meta[property='og:image']", "content")
+  if cover ~= "" then 
+    return transformCoverUrl(cover, bookUrl) 
+  end
+  return nil
+end
+```
+
+### Пример: NovelBin thumbnail → полная обложка
+
+```lua
+-- NovelBin использует thumbnail в URL, заменяем на полные обложки
+local function transformNovelBinCover(coverUrl)
+  if coverUrl:find("novel_200_89") then
+    return coverUrl:gsub("novel_200_89", "novel")
+  end
+  return coverUrl
+end
+
+function getBookCoverImageUrl(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local cover = html_attr(r.body, "meta[property='og:image']", "content")
+  if cover ~= "" then 
+    return transformNovelBinCover(cover) 
+  end
+  return nil
+end
+```
+
+### Пример: Image Proxy для CORS
+
+```lua
+-- Использование прокси для обложек без CORS
+local function transformCoverWithProxy(coverUrl)
+  return "https://wsrv.nl/?url=" .. url_encode(coverUrl)
+end
+
+function getBookCoverImageUrl(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local cover = html_attr(r.body, "meta[property='og:image']", "content")
+  if cover ~= "" then 
+    return transformCoverWithProxy(cover) 
+  end
+  return nil
+end
+```
+
+**Рекомендации:**
+- Всегда проверяйте `coverUrl ~= ""` перед трансформацией
+- Используйте `url_resolve()` для относительных URL
+- Тестируйте трансформеры с разными форматами обложек
+- Логируйте оригинальный и трансформированный URL для отладки
+```
+
+---
+
 ## 9. Реализация списка глав
 
 ### Простой HTML

@@ -10,6 +10,14 @@ icon     = "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
+local function transformCoverUrl(coverUrl)
+  -- NovelBin использует thumbnail в URL, заменяем на полные обложки
+  if coverUrl:find("novel_200_89") then
+    return coverUrl:gsub("novel_200_89", "novel")
+  end
+  return coverUrl
+end
+
 local function buildCatalogUrl(index)
   local page = index + 1
   if page == 1 then
@@ -98,7 +106,9 @@ function getBookCoverImageUrl(bookUrl)
   local r = http_get(bookUrl)
   if not r.success then return nil end
   local url = html_attr(r.body, "meta[property='og:image']", "content")
-  if url ~= "" then return url end
+  if url ~= "" then 
+    return transformCoverUrl(url) 
+  end
   return nil
 end
 
