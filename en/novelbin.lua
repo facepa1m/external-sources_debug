@@ -2,8 +2,8 @@
 -- Compatible with LuaJ (Lua 5.1) — no goto, no colon methods on table fields
 
 id       = "NovelBin"
-name     = "NovelBin"
-version  = "1.0.2"
+name     = "Novel Bin"
+version  = "1.0.3"
 baseUrl  = "https://novelbin.com/"
 language = "en"
 icon     = "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/novelbin.png"
