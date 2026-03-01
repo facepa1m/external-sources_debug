@@ -3,12 +3,19 @@
 
 id       = "NovelBin"
 name     = "Novel Bin"
-version  = "1.0.3"
+version  = "1.0.4"
 baseUrl  = "https://novelbin.com/"
 language = "en"
 icon     = "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/novelbin.png"
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
+local function transformCoverUrl(coverUrl)
+  -- NovelBin использует thumbnail в URL, заменяем на полные обложки
+  if coverUrl:find("novel_200_89") then
+    return coverUrl:gsub("novel_200_89", "novel")
+  end
+  return coverUrl
+end
 
 local function buildCatalogUrl(index)
   local page = index + 1

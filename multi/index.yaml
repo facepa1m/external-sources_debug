@@ -6,5 +6,5 @@ sources:
     version: "1.0.2"
     description: "Multilanguage source with AES decryption and AI translation"
     url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/multi/wtrlab.lua"
-    icon: "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/wtrlab.png"
+    icon: "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/wtr-lab.png"
     language: "multi"
