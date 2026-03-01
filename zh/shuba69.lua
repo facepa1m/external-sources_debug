@@ -87,36 +87,33 @@ end
 -- ── Список глав ──────────────────────────────────────────────────────────────
 
 function getChapterList(bookUrl)
+    -- Обязательно используем % для экранирования точки
     local chapterListUrl = bookUrl:gsub("/txt/", "/"):gsub("%.htm", "/")
     
-    -- 2. Запрос с правильной кодировкой
+    -- Пробуем получить документ сразу в GBK
     local r = http_get(chapterListUrl, "GBK")
     
-    if not r.success then
-        log_error("getChapterList failed: " .. chapterListUrl)
-        return {}
-    end
+    if not r.success then return {} end
 
     local chapters = {}
-    -- 3. Селектор div#catalog ul li a
     local links = html_select(r.body, "div#catalog ul li a")
     
-    -- 4. Инверсия (asReversed), так как на сайте новые главы сверху
     for i = #links, 1, -1 do
         local a = links[i]
-        local title = string_trim(a.text)
         
-        if title ~= "" then
-            table.insert(chapters, {
-                title = title,
-                url   = a.href
-            })
-        end
+        -- Если текст все еще ломаный, используем string_normalize (если есть в API)
+        -- или полагаемся на то, что r.body уже нормализован движком
+        local rawTitle = a.text
+        
+        table.insert(chapters, {
+            title = string_trim(rawTitle),
+            url   = a.href
+        })
     end
     
-    log_info("Loaded chapters: " .. #chapters)
     return chapters
 end
+
 
 -- ── Хеш списка глав (для отслеживания обновлений) ─────────────────────────────
 
@@ -131,14 +128,17 @@ end
 -- ── Текст главы ──────────────────────────────────────────────────────────────
 
 function getChapterText(html)
-    -- Очистка от мусора (реклама, скрипты, навигация)
-    local cleaned = html_remove(html, 
-        "h1", "div.txtinfo", "div.bottom-ad", "div.bottem2", ".visible-xs", "script"
-    )
+    -- Важно: html приходит в UTF-8 уже от самого приложения после загрузки страницы
+    -- Но если внутри есть мета-теги с GBK, Jsoup может запутаться.
+    local cleaned = html_remove(html, "h1", "div.txtinfo", "div.bottom-ad", "div.bottem2", "script")
     
-    local el = html_select_first(cleaned, "div.txtnav")
-    if not el then return "" end
-
-    -- html_text автоматически сконвертирует блоки в <p> для читалки
-    return html_text(el.html)
+    -- 69shuba часто прячет текст в div.txtnav
+    local content = html_select_first(cleaned, "div.txtnav")
+    
+    if content then
+        -- Используем html_text для корректного извлечения текста с сохранением переносов
+        return html_text(content.html)
+    end
+    
+    return ""
 end
