@@ -1,140 +1,168 @@
--- Novel543 Lua Plugin
--- Migrated from Kotlin native source (Sub-page recursive text joining)
+﻿-- ── Метаданные ────────────────────────────────────────────────────────────────
+id       = "novel543"
+name     = "Novel543"
+version  = "1.0.0"
+baseUrl  = "https://www.novel543.com/"
+language = "zh"
+icon     = "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/novel543.png"
 
-return {
-    id = "novel543",
-    name = "Novel543",
-    version = "1.0.0",
-    language = "zh",
-    baseUrl = "https://www.novel543.com",
-    -- icon will be loaded from yaml config
+-- ── Хелперы ───────────────────────────────────────────────────────────────────
 
-    -- Catalog
-    getCatalogList = function(index)
-        local url = "https://www.novel543.com/bookstack/?page=" .. (index + 1)
-        local res = http_get(url)
-        if not res.success then return { items = {}, hasNext = false } end
-        
-        local doc = html_parse(res.body)
-        local items = html_select(doc, "ul.list li.media")
-        local books = {}
-        
-        for i = 1, #items do
-            local item = items[i]
-            local titleLink = html_select(item, "div.media-content h3 a")[1]
-            local coverImg = html_select(item, "div.media-left img")[1]
-            local urlLink = html_select(item, "div.media-left a")[1]
-            
-            if titleLink and urlLink then
-                table.insert(books, {
-                    title = titleLink:get_text(),
-                    url = urlLink.href,
-                    cover = coverImg and coverImg.src or ""
-                })
-            end
-        end
-        
-        return { items = books, hasNext = #books > 0 }
-    end,
+local function absUrl(href)
+  if not href or href == "" then return "" end
+  if string_starts_with(href, "http") then return href end
+  if string_starts_with(href, "//") then return "https:" .. href end
+  return url_resolve(baseUrl, href)
+end
 
-    -- Search
-    getCatalogSearch = function(index, input)
-        if index > 0 then return { items = {}, hasNext = false } end
-        local url = "https://www.novel543.com/search/" .. url_encode(input)
-        
-        local res = http_get(url)
-        if not res.success then return { items = {}, hasNext = false } end
-        
-        local doc = html_parse(res.body)
-        local items = html_select(doc, "ul.list li.media")
-        local books = {}
-        
-        for i = 1, #items do
-            local item = items[i]
-            local titleLink = html_select(item, "div.media-content h3 a")[1]
-            local coverImg = html_select(item, "div.media-left img")[1]
-            local urlLink = html_select(item, "div.media-left a")[1]
-            
-            if titleLink and urlLink then
-                table.insert(books, {
-                    title = titleLink:get_text(),
-                    url = urlLink.href,
-                    cover = coverImg and coverImg.src or ""
-                })
-            end
-        end
-        
-        return { items = books, hasNext = false }
-    end,
+-- ── Каталог ───────────────────────────────────────────────────────────────────
 
-    -- Book Details
-    getBookTitle = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local title = html_select(doc, "h1.title")[1]
-        return title and title:get_text() or nil
-    end,
+function getCatalogList(index)
+  local url = "https://www.novel543.com/bookstack/?page=" .. tostring(index + 1)
 
-    getBookCoverImageUrl = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local img = html_select(doc, ".cover img")[1]
-        return img and img.src or nil
-    end,
+  local r = http_get(url)
+  if not r.success then return { items = {}, hasNext = false } end
 
-    getBookDescription = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local desc = html_select(doc, "div.intro")[1]
-        return desc and desc:get_text() or nil
-    end,
-
-    -- Chapters (AJAX /dir)
-    getChapterList = function(url)
-        local dirUrl = url:gsub("/+$", "") .. "/dir"
-        local res = http_get(dirUrl)
-        if not res.success then return {} end
-        
-        local doc = html_parse(res.body)
-        local links = html_select(doc, "ul.all li a")
-        local chapters = {}
-        
-        for i = 1, #links do
-            table.insert(chapters, {
-                title = links[i]:get_text(),
-                url = url_resolve("https://www.novel543.com/", links[i].href)
-            })
-        end
-        return chapters
-    end,
-
-    getChapterText = function(html)
-        -- In Lua we can't easily do recursive network requests inside getChapterText 
-        -- because it's usually called on already downloaded HTML.
-        -- However, we can try to join pages if we were to handle download in getChapterText.
-        -- For now, we implement basic text extraction as in other sources.
-        local doc = html_parse(html)
-        local content = html_select(doc, "div.content")[1]
-        if content then
-            content:remove("div.gadBlock")
-            content:remove("script")
-            content:remove("ins")
-            content:remove(".ads")
-            content:remove(".ad")
-            content:remove("p:contains(溫馨提示)")
-            return html_text(content)
-        end
-        return ""
-    end,
-
-    getChapterListHash = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local meta = html_select(doc, "p.meta span.iconf:last-child")[1]
-        return meta and meta:get_text() or nil
+  local items = {}
+  for _, li in ipairs(html_select(r.body, "ul.list li.media")) do
+    local titleEl = html_select_first(li.html, "div.media-content h3 a")
+    local bookUrl = absUrl(html_attr(li.html, "div.media-left a", "href"))
+    local cover   = absUrl(html_attr(li.html, "div.media-left img", "src"))
+    if titleEl and bookUrl ~= "" then
+      table.insert(items, {
+        title = string_clean(titleEl.text),
+        url   = bookUrl,
+        cover = cover
+      })
     end
-}
+  end
+
+  return { items = items, hasNext = #items > 0 }
+end
+
+-- ── Поиск (только первая страница) ───────────────────────────────────────────
+
+function getCatalogSearch(index, query)
+  if index > 0 then return { items = {}, hasNext = false } end
+
+  local url = "https://www.novel543.com/search/" .. url_encode(query)
+
+  local r = http_get(url)
+  if not r.success then return { items = {}, hasNext = false } end
+
+  local items = {}
+  for _, li in ipairs(html_select(r.body, "ul.list li.media")) do
+    local titleEl = html_select_first(li.html, "div.media-content h3 a")
+    local bookUrl = absUrl(html_attr(li.html, "div.media-left a", "href"))
+    local cover   = absUrl(html_attr(li.html, "div.media-left img", "src"))
+    if titleEl and bookUrl ~= "" then
+      table.insert(items, {
+        title = string_clean(titleEl.text),
+        url   = bookUrl,
+        cover = cover
+      })
+    end
+  end
+
+  return { items = items, hasNext = false }
+end
+
+-- ── Детали книги ──────────────────────────────────────────────────────────────
+
+function getBookTitle(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local el = html_select_first(r.body, "h1.title")
+  if el then return string_clean(el.text) end
+  return nil
+end
+
+function getBookCoverImageUrl(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local el = html_select_first(r.body, ".cover img")
+  if el then return absUrl(el.src) end
+  return nil
+end
+
+function getBookDescription(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local el = html_select_first(r.body, "div.intro")
+  if el then return string_clean(el.text) end
+  return nil
+end
+
+-- ── Список глав (AJAX GET на /dir) ────────────────────────────────────────────
+
+function getChapterList(bookUrl)
+  local dirUrl = bookUrl:gsub("/$", "") .. "/dir"
+  local r = http_get(dirUrl)
+  if not r.success then return {} end
+
+  local chapters = {}
+  for _, a in ipairs(html_select(r.body, "ul.all li a")) do
+    local chUrl = absUrl(a.href)
+    if chUrl ~= "" then
+      table.insert(chapters, {
+        title = string_clean(a.text),
+        url   = chUrl
+      })
+    end
+  end
+
+  return chapters
+end
+
+-- ── Хэш для обновлений ────────────────────────────────────────────────────────
+
+function getChapterListHash(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local el = html_select_first(r.body, "p.meta span.iconf:last-child")
+  if el then return string_clean(el.text) end
+  return nil
+end
+
+-- ── Текст главы (многостраничный) ────────────────────────────────────────────
+
+function getChapterText(html, url)
+  -- Извлекаем имя файла: "https://.../8096_1.html" → "8096_1"
+  local chapterFile = string.match(url, "/([^/]+)%.html$") or ""
+  local baseDir     = string.match(url, "^(.+/)") or ""
+
+  -- Получаем текст первой страницы
+  local cleaned = html_remove(html, "div.gadBlock", "script", "ins", ".ads", ".ad", "p:contains(溫馨提示)")
+  local el = html_select_first(cleaned, "div.content")
+  local parts = {}
+  if el then table.insert(parts, html_text(el.html)) end
+
+  -- Ищем подстраницы: {chapterFile}_2.html, _3.html, ...
+  local currentHtml = html
+  for _ = 1, 20 do
+    -- Ищем ссылку вида {chapterFile}_N.html
+    local subUrl = nil
+    for _, a in ipairs(html_select(currentHtml, "a[href]")) do
+      local href = a.href
+      local fname = string.match(href, "/([^/]+)$") or ""
+      -- паттерн: chapterFile + "_" + цифры + ".html"
+      if string.match(fname, "^" .. chapterFile:gsub("%-", "%%-") .. "_%d+%.html$") then
+        subUrl = absUrl(href)
+        break
+      end
+    end
+
+    if not subUrl then break end
+
+    local pr = http_get(subUrl)
+    if not pr.success then break end
+
+    local subCleaned = html_remove(pr.body, "div.gadBlock", "script", "ins", ".ads", ".ad", "p:contains(溫馨提示)")
+    local subEl = html_select_first(subCleaned, "div.content")
+    if subEl then table.insert(parts, html_text(subEl.html)) end
+
+    currentHtml = pr.body
+  end
+
+  return table.concat(parts, "\n\n")
+end

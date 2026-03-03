@@ -1,9 +1,9 @@
-languages:
+﻿languages:
   en:
     name: "English"
     url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/en/index.yaml"
   ru:
-    name: "Русский"
+    name: "Russian"
     url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/ru/index.yaml"
   id:
     name: "Indonesian"
@@ -11,6 +11,7 @@ languages:
   zh:
     name: "Chinese"
     url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/zh/index.yaml"
-  multi:
-    name: "Multilanguage"
-    url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/multi/index.yaml"
+  mtl:
+    name: "MTL"
+    url: "https://raw.githubusercontent.com/HnDK0/external-sources/main/mtl/index.yaml"
+

@@ -1,151 +1,166 @@
--- ReadNovelFull Lua Plugin
--- Migrated from Kotlin native source
+﻿-- ── Метаданные ────────────────────────────────────────────────────────────────
+id       = "read_novel_full"
+name     = "ReadNovelFull"
+version  = "1.0.0"
+baseUrl  = "https://readnovelfull.com/"
+language = "en"
+icon     = "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/readnovelfull.png"
 
-return {
-    id = "read_novel_full",
-    name = "ReadNovelFull",
-    version = "1.0.0",
-    language = "en",
-    baseUrl = "https://readnovelfull.com",
-    -- icon will be loaded from yaml config
+-- ── Хелперы ───────────────────────────────────────────────────────────────────
 
-    -- Catalog: Most Popular
-    getCatalogList = function(index)
-        local url = "https://readnovelfull.com/novel-list/most-popular-novel"
-        if index > 0 then
-            url = url .. "?page=" .. (index + 1)
-        end
-        
-        local res = http_get(url)
-        if not res.success then return { items = {}, hasNext = false } end
-        
-        local doc = html_parse(res.body)
-        local items = html_select(doc, ".col-novel-main .row")
-        local books = {}
-        
-        for i = 1, #items do
-            local item = items[i]
-            local titleElem = html_select(item, ".novel-title a")[1]
-            local coverElem = html_select(item, "div.col-xs-3 > div > img")[1]
-            
-            if titleElem then
-                table.insert(books, {
-                    title = titleElem:get_text(),
-                    url = titleElem.href,
-                    cover = coverElem and coverElem.src or ""
-                })
-            end
-        end
-        
-        return {
-            items = books,
-            hasNext = #books > 0
-        }
-    end,
+local function absUrl(href)
+  if not href or href == "" then return "" end
+  if string_starts_with(href, "http") then return href end
+  if string_starts_with(href, "//") then return "https:" .. href end
+  return url_resolve(baseUrl, href)
+end
 
-    -- Search
-    getCatalogSearch = function(index, input)
-        local url = "https://readnovelfull.com/novel-list/search?keyword=" .. url_encode(input)
-        if index > 0 then
-            url = url .. "&page=" .. (index + 1)
-        end
-        
-        local res = http_get(url)
-        if not res.success then return { items = {}, hasNext = false } end
-        
-        local doc = html_parse(res.body)
-        local items = html_select(doc, ".col-novel-main .row")
-        local books = {}
-        
-        for i = 1, #items do
-            local item = items[i]
-            local titleElem = html_select(item, ".novel-title a")[1]
-            local coverElem = html_select(item, "div.col-xs-3 > div > img")[1]
-            
-            if titleElem then
-                table.insert(books, {
-                    title = titleElem:get_text(),
-                    url = titleElem.href,
-                    cover = coverElem and coverElem.src or ""
-                })
-            end
-        end
-        
-        return {
-            items = books,
-            hasNext = #books > 0
-        }
-    end,
+local function transformCover(coverUrl)
+  if not coverUrl or coverUrl == "" then return "" end
+  coverUrl = regex_replace(coverUrl, "t-200x89", "t-300x439")
+  coverUrl = regex_replace(coverUrl, "t-80x113", "t-300x439")
+  return coverUrl
+end
 
-    -- Book Details
-    getBookTitle = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local title = html_select(doc, "h3.title")[1]
-        return title and title:get_text() or nil
-    end,
+local function applyStandardContentTransforms(text)
+  if not text or text == "" then return "" end
+  text = string_normalize(text)
+  local domain = baseUrl:gsub("https?://", ""):gsub("^www%.", ""):gsub("/$", "")
+  text = regex_replace(text, "(?i)" .. domain .. ".*?\\n", "")
+  text = regex_replace(text, "(?i)\\A[\\s\\p{Z}\\uFEFF]*((Chapter\\s+\\d+)[^\\n\\r]*[\\n\\r\\s]*)+", "")
+  text = regex_replace(text, "(?im)^\\s*(Translator|Editor|Proofreader|Read\\s+(at|on|latest))[:\\s][^\\n\\r]{0,70}(\\r?\\n|$)", "")
+  text = string_trim(text)
+  return text
+end
 
-    getBookCoverImageUrl = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local img = html_select(doc, ".book img[src]")[1]
-        return img and img.src or nil
-    end,
+-- ── Каталог ───────────────────────────────────────────────────────────────────
 
-    getBookDescription = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local desc = html_select(doc, "#tab-description")[1]
-        return desc and desc:get_text() or nil
-    end,
+function getCatalogList(index)
+  local catalogBase = baseUrl .. "novel-list/most-popular-novel"
+  local url = index == 0 and catalogBase or (catalogBase .. "?page=" .. tostring(index + 1))
 
-    -- Chapters
-    getChapterList = function(url)
-        local res = http_get(url)
-        if not res.success then return {} end
-        local doc = html_parse(res.body)
-        
-        local novelIdElem = html_select(doc, "#rating[data-novel-id]")[1]
-        if not novelIdElem then return {} end
-        local novelId = novelIdElem:attr("data-novel-id")
-        
-        local ajaxUrl = "https://readnovelfull.com/ajax/chapter-archive?novelId=" .. novelId
-        local ajaxRes = http_get(ajaxUrl)
-        if not ajaxRes.success then return {} end
-        
-        local ajaxDoc = html_parse(ajaxRes.body)
-        local links = html_select(ajaxDoc, "a[href]")
-        local chapters = {}
-        
-        for i = 1, #links do
-            table.insert(chapters, {
-                title = links[i]:attr("title") or links[i]:get_text(),
-                url = links[i].href
-            })
-        end
-        return chapters
-    end,
+  local r = http_get(url)
+  if not r.success then return { items = {}, hasNext = false } end
 
-    getChapterText = function(html)
-        local doc = html_parse(html)
-        local content = html_select(doc, "#chr-content")[1]
-        if content then
-            content:remove("script")
-            content:remove(".ads")
-            content:remove(".advertisement")
-            return html_text(content)
-        end
-        return ""
-    end,
-
-    getChapterListHash = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local last = html_select(doc, ".l-chapter a.chapter-title")[1]
-        return last and last.href or nil
+  local items = {}
+  for _, row in ipairs(html_select(r.body, ".col-novel-main .row")) do
+    local titleEl = html_select_first(row.html, ".novel-title a")
+    if titleEl then
+      local bookUrl = absUrl(titleEl.href)
+      local cover   = html_attr(row.html, "div.col-xs-3 > div > img", "src")
+      if cover == "" then cover = html_attr(row.html, "div.col-xs-3 > div > img", "data-src") end
+      table.insert(items, {
+        title = string_clean(titleEl.text),
+        url   = bookUrl,
+        cover = transformCover(absUrl(cover))
+      })
     end
-}
+  end
+
+  return { items = items, hasNext = #items > 0 }
+end
+
+-- ── Поиск ─────────────────────────────────────────────────────────────────────
+
+function getCatalogSearch(index, query)
+  local searchBase = baseUrl:gsub("/$", "") .. "/novel-list/search?keyword=" .. url_encode(query)
+  local url = index == 0 and searchBase or (searchBase .. "&page=" .. tostring(index + 1))
+
+  local r = http_get(url)
+  if not r.success then return { items = {}, hasNext = false } end
+
+  local items = {}
+  for _, row in ipairs(html_select(r.body, ".col-novel-main .row")) do
+    local titleEl = html_select_first(row.html, ".novel-title a")
+    if titleEl then
+      local bookUrl = absUrl(titleEl.href)
+      local cover   = html_attr(row.html, "div.col-xs-3 > div > img", "src")
+      if cover == "" then cover = html_attr(row.html, "div.col-xs-3 > div > img", "data-src") end
+      table.insert(items, {
+        title = string_clean(titleEl.text),
+        url   = bookUrl,
+        cover = transformCover(absUrl(cover))
+      })
+    end
+  end
+
+  return { items = items, hasNext = #items > 0 }
+end
+
+-- ── Детали книги ──────────────────────────────────────────────────────────────
+
+function getBookTitle(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local el = html_select_first(r.body, "h3.title")
+  return el and string_clean(el.text) or nil
+end
+
+function getBookCoverImageUrl(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local cover = html_attr(r.body, ".book img[src]", "src")
+  if cover == "" then return nil end
+  return transformCover(absUrl(cover))
+end
+
+function getBookDescription(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local el = html_select_first(r.body, "#tab-description")
+  return el and string_trim(el.text) or nil
+end
+
+-- ── Список глав (AJAX) ────────────────────────────────────────────────────────
+
+function getChapterList(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then
+    log_error("readnovelfull: getChapterList failed for " .. bookUrl)
+    return {}
+  end
+
+  -- novelId хранится в атрибуте data-novel-id элемента #rating
+  local novelId = html_attr(r.body, "#rating[data-novel-id]", "data-novel-id")
+  if novelId == "" then
+    log_error("readnovelfull: novelId not found at " .. bookUrl)
+    return {}
+  end
+
+  local ajaxUrl = baseUrl:gsub("/$", "") .. "/ajax/chapter-archive?novelId=" .. novelId
+  local ar = http_get(ajaxUrl)
+  if not ar.success then
+    log_error("readnovelfull: AJAX failed code=" .. tostring(ar.code))
+    return {}
+  end
+
+  local chapters = {}
+  for _, a in ipairs(html_select(ar.body, "a[href]")) do
+    local title = a.title
+    if not title or title == "" then title = string_trim(a.text) end
+    local chUrl = absUrl(a.href)
+    if chUrl ~= "" then
+      table.insert(chapters, { title = string_clean(title), url = chUrl })
+    end
+  end
+
+  return chapters
+end
+
+-- ── Хэш для обновлений ────────────────────────────────────────────────────────
+
+function getChapterListHash(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local el = html_select_first(r.body, ".l-chapter a.chapter-title")
+  return el and el.href or nil
+end
+
+-- ── Текст главы ───────────────────────────────────────────────────────────────
+
+function getChapterText(html, url)
+  local cleaned = html_remove(html, "script", ".ads", ".advertisement", "h3", ".chapter-warning", ".ad-insert")
+  local el = html_select_first(cleaned, "#chr-content")
+  if not el then return "" end
+  return applyStandardContentTransforms(html_text(el.html))
+end

@@ -1,138 +1,113 @@
--- BacaLightnovel Lua Plugin
--- Migrated from Kotlin native source
+﻿id       = "NovLove"
+name     = "NovLove"
+baseUrl  = "https://novlove.com/"
+catalogUrl = "https://novlove.com/sort/nov-love-daily-update"
+language = "en"
+icon     = "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/novlove.png"
 
-return {
-    id = "baca_lightnovel",
-    name = "BacaLightnovel",
-    version = "1.0.0",
-    language = "id",
-    baseUrl = "https://bacalightnovel.co",
-    -- icon will be loaded from yaml config
+-- ── Вспомогательные функции ───────────────────────────────────────────────────
 
-    -- Catalog
-    getCatalogList = function(index)
-        local url = "https://bacalightnovel.co/series/"
-        if index > 0 then
-            url = url .. "?page=" .. (index + 1) .. "&order=populer"
-        end
-        
-        local res = http_get(url)
-        if not res.success then return { items = {}, hasNext = false } end
-        
-        local doc = html_parse(res.body)
-        local items = html_select(doc, ".listupd > .maindet .mdthumb a")
-        local books = {}
-        
-        for i = 1, #items do
-            local item = items[i]
-            table.insert(books, {
-                title = item:attr("title"),
-                url = item.href,
-                cover = item.src
-            })
-        end
-        
-        return {
-            items = books,
-            hasNext = #books > 0
-        }
-    end,
+local function absUrl(href)
+    if not href or href == "" then return "" end
+    if string_starts_with(href, "http") then return href end
+    return url_resolve(baseUrl, href)
+end
 
-    -- Search
-    getCatalogSearch = function(index, input)
-        local url = "https://bacalightnovel.co/"
-        if index == 0 then
-            url = url .. "?s=" .. url_encode(input)
-        else
-            url = url .. "page/" .. (index + 1) .. "/?s=" .. url_encode(input)
-        end
-        
-        local res = http_get(url)
-        if not res.success then return { items = {}, hasNext = false } end
-        
-        local doc = html_parse(res.body)
-        local items = html_select(doc, ".listupd > .maindet .mdthumb a")
-        local books = {}
-        
-        for i = 1, #items do
-            local item = items[i]
-            table.insert(books, {
-                title = item:attr("title"),
-                url = item.href,
-                cover = item.src
-            })
-        end
-        
-        return {
-            items = books,
-            hasNext = #books > 0
-        }
-    end,
+-- UrlTransformers.novelBinCatalogCoverUrl()
+local function transformCoverUrl(url)
+    if not url or url == "" then return "" end
+    return absUrl(url):gsub("novelhall%.com", "novlove.com")
+end
 
-    -- Book Details
-    getBookTitle = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local title = html_select(doc, "h1.entry-title")[1]
-        return title and title:get_text() or nil
-    end,
+-- ── Каталог ───────────────────────────────────────────────────────────────────
 
-    getBookCoverImageUrl = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local img = html_select(doc, ".sertothumb img")[1]
-        return img and img.src or nil
-    end,
+function getCatalogList(index)
+    local page = index + 1
+    local url = (page == 1) and catalogUrl or (baseUrl .. "sort/nov-love-daily-update?page=" .. page)
+    
+    local r = http_get(url)
+    if not r.success then return { items = {}, hasNext = false } end
 
-    getBookDescription = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local desc = html_select(doc, ".entry-content")[1]
-        return desc and desc:get_text() or nil
-    end,
-
-    -- Chapters
-    getChapterList = function(url)
-        local res = http_get(url)
-        if not res.success then return {} end
-        local doc = html_parse(res.body)
-        local links = html_select(doc, ".eplister li > a:not(.dlpdf)")
-        local chapters = {}
-        
-        for i = 1, #links do
-            local titleElem = html_select(links[i], ".epl-title")[1]
-            table.insert(chapters, {
-                title = titleElem and titleElem:get_text() or links[i]:get_text(),
-                url = links[i].href
-            })
-        end
-        -- Reverse to get oldest first
-        local reversed = {}
-        for i = #chapters, 1, -1 do
-            table.insert(reversed, chapters[i])
-        end
-        return reversed
-    end,
-
-    getChapterText = function(html)
-        local doc = html_parse(html)
-        local content = html_select(doc, ".epcontent[itemprop=text] .text-left")[1]
-        if content then
-            content:remove("script")
-            content:remove(".ads")
-            return html_text(content)
-        end
-        return ""
-    end,
-
-    getChapterListHash = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local last = html_select(doc, ".epcurlast")[1]
-        return last and last:get_text() or nil
+    local items = {}
+    for _, el in ipairs(html_select(r.body, ".col-novel-main .row")) do
+        local a = html_select_first(el.html, ".novel-title a")
+        table.insert(items, {
+            title = string_clean(a.text),
+            url   = absUrl(a:attr("href")),
+            cover = transformCoverUrl(html_attr(el.html, "img.cover", "data-src"))
+        })
     end
-}
+    return { items = items, hasNext = #items > 0 }
+end
+
+-- ── Поиск ─────────────────────────────────────────────────────────────────────
+
+function getCatalogSearch(index, query)
+    local page = index + 1
+    local url = baseUrl .. "search?keyword=" .. url_encode(query) .. (page > 1 and ("&page=" .. page) or "")
+
+    local r = http_get(url)
+    if not r.success then return { items = {}, hasNext = false } end
+
+    local items = {}
+    for _, el in ipairs(html_select(r.body, ".col-novel-main .row")) do
+        local a = html_select_first(el.html, ".novel-title a")
+        table.insert(items, {
+            title = string_clean(a.text),
+            url   = absUrl(a:attr("href")),
+            cover = transformCoverUrl(html_attr(el.html, "img.cover", "src"))
+        })
+    end
+    return { items = items, hasNext = #items > 0 }
+end
+
+-- ── Детали книги ──────────────────────────────────────────────────────────────
+
+function getBookTitle(bookUrl)
+    local r = http_get(bookUrl)
+    return string_clean(html_text(r.body, "h3.title"))
+end
+
+function getBookCoverImageUrl(bookUrl)
+    local r = http_get(bookUrl)
+    return transformCoverUrl(html_attr(r.body, "meta[itemprop=image]", "content"))
+end
+
+function getBookDescription(bookUrl)
+    local r = http_get(bookUrl)
+    return string_trim(html_text(r.body, ".desc-text"))
+end
+
+-- ── Список глав (AJAX_BASED) ──────────────────────────────────────────────────
+
+function getChapterList(bookUrl)
+    local novelId = bookUrl:gsub("/$", ""):match("([^/]+)$")
+    local ajaxUrl = baseUrl:gsub("/$", "") .. "/ajax/chapter-archive?novelId=" .. novelId
+    
+    local r = http_get(ajaxUrl)
+    if not r.success then return {} end
+
+    local chapters = {}
+    for _, a in ipairs(html_select(r.body, "a[href*='/chapter']")) do
+        table.insert(chapters, {
+            title = string_trim(a:attr("title") ~= "" and a:attr("title") or a.text),
+            url   = absUrl(a:attr("href"))
+        })
+    end
+    return chapters
+end
+
+function getChapterListHash(bookUrl)
+    local r = http_get(bookUrl)
+    return html_attr(r.body, ".l-chapter a.chapter-title", "href")
+end
+
+-- ── Текст главы ───────────────────────────────────────────────────────────────
+
+function getChapterText(html, url)
+    local cleaned = html_remove(html, "script", ".ads", ".advertisement", ".social-share")
+    local el = html_select_first(cleaned, "#chr-content")
+    if not el then return "" end
+    
+    return applyStandardContentTransforms(html_text(el.html))
+end

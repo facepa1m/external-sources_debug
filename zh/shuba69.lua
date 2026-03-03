@@ -1,12 +1,22 @@
--- ── Метаданные ───────────────────────────────────────────────────────────────
+﻿-- ── Метаданные ───────────────────────────────────────────────────────────────
 id       = "shuba69"
 name     = "69shuba"
-version  = "1.0.6"
+version  = "1.0.0"
 baseUrl  = "https://www.69shuba.com/"
 language = "zh"
 icon     = "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/69shuba.png"
+charset  = "GBK"
 
--- ── Каталог и Поиск ──────────────────────────────────────────────────────────
+-- ── Вспомогательные функции ─────────────────────────────────────────────────
+
+local function absUrl(href)
+    if href == "" then return "" end
+    if string_starts_with(href, "http") then return href end
+    if string_starts_with(href, "//") then return "https:" .. href end
+    return url_resolve(baseUrl, href)
+end
+
+-- ── Каталог ──────────────────────────────────────────────────────────────────
 
 function getCatalogList(index)
     local page = index + 1
@@ -18,13 +28,12 @@ function getCatalogList(index)
     local items = {}
     for _, li in ipairs(html_select(r.body, "ul#article_list_content li")) do
         local titleEl = html_select_first(li.html, "div.newnav h3 a")
-        local imgEl   = html_select_first(li.html, "a.imgbox img")
-        
         if titleEl then
+            local cover = html_attr(li.html, "a.imgbox img", "data-src")
             table.insert(items, {
                 title = string_trim(titleEl.text),
-                url   = titleEl.href,
-                cover = html_attr(li.html, "a.imgbox img", "data-src")
+                url   = absUrl(titleEl.href),
+                cover = absUrl(cover)
             })
         end
     end
@@ -32,14 +41,13 @@ function getCatalogList(index)
     return { items = items, hasNext = #items > 0 }
 end
 
+-- ── Поиск ───────────────────────────────────────────────────────────────────
+
 function getCatalogSearch(index, query)
-    -- Сайт поддерживает только одну страницу поиска через POST
     if index > 0 then return { items = {}, hasNext = false } end
 
-    local searchUrl = "https://www.69shuba.com/modules/article/search.php"
     local payload = "searchkey=" .. url_encode_charset(query, "GBK") .. "&searchtype=all"
-    
-    local r = http_post(searchUrl, payload, {
+    local r = http_post("https://www.69shuba.com/modules/article/search.php", payload, {
         headers = { ["Content-Type"] = "application/x-www-form-urlencoded" },
         charset = "GBK"
     })
@@ -49,12 +57,12 @@ function getCatalogSearch(index, query)
     local items = {}
     for _, li in ipairs(html_select(r.body, "div.newbox ul li")) do
         local titleEl = html_select_first(li.html, "h3 a:last-child")
-        
         if titleEl then
+            local cover = html_attr(li.html, "a.imgbox img", "data-src")
             table.insert(items, {
                 title = string_trim(titleEl.text),
-                url   = titleEl.href,
-                cover = html_attr(li.html, "a.imgbox img", "data-src")
+                url   = absUrl(titleEl.href),
+                cover = absUrl(cover)
             })
         end
     end
@@ -62,7 +70,7 @@ function getCatalogSearch(index, query)
     return { items = items, hasNext = false }
 end
 
--- ── Детали книги ─────────────────────────────────────────────────────────────
+-- ── Детали книги ────────────────────────────────────────────────────────────
 
 function getBookTitle(bookUrl)
     local r = http_get(bookUrl, { charset = "GBK" })
@@ -74,7 +82,8 @@ end
 function getBookCoverImageUrl(bookUrl)
     local r = http_get(bookUrl, { charset = "GBK" })
     if not r.success then return nil end
-    return html_attr(r.body, "div.bookimg2 img", "src")
+    local cover = html_attr(r.body, "div.bookimg2 img", "src")
+    return cover ~= "" and absUrl(cover) or nil
 end
 
 function getBookDescription(bookUrl)
@@ -84,61 +93,59 @@ function getBookDescription(bookUrl)
     return el and string_trim(el.text) or nil
 end
 
--- ── Список глав ──────────────────────────────────────────────────────────────
+-- ── Список глав ─────────────────────────────────────────────────────────────
 
 function getChapterList(bookUrl)
-    -- Обязательно используем % для экранирования точки
-    local chapterListUrl = bookUrl:gsub("/txt/", "/"):gsub("%.htm", "/")
-    
-    -- Пробуем получить документ сразу в GBK
-    local r = http_get(chapterListUrl, "GBK")
-    
+    local id = string.match(bookUrl, "/(%d+)%.htm$")
+    if not id then return {} end
+    local listUrl = baseUrl .. id .. "/"
+
+    local r = http_get(listUrl, { charset = "GBK" })
     if not r.success then return {} end
 
     local chapters = {}
-    local links = html_select(r.body, "div#catalog ul li a")
-    
-    for i = #links, 1, -1 do
-        local a = links[i]
-        
-        -- Если текст все еще ломаный, используем string_normalize (если есть в API)
-        -- или полагаемся на то, что r.body уже нормализован движком
-        local rawTitle = a.text
-        
+    local elements = html_select(r.body, "div#catalog ul li a")
+    for i = #elements, 1, -1 do
+        local a = elements[i]
         table.insert(chapters, {
-            title = string_trim(rawTitle),
-            url   = a.href
+            title = string_trim(a.text),
+            url   = absUrl(a.href)
         })
     end
-    
     return chapters
 end
 
-
--- ── Хеш списка глав (для отслеживания обновлений) ─────────────────────────────
-
 function getChapterListHash(bookUrl)
-    -- Берем последнюю главу как индикатор обновления
-    local r = http_get(bookUrl, "GBK")
-    if not r.success then return "" end
-    local el = html_select_first(r.body, "div#catalog ul li a")
-    return el and el.href or ""
+    local r = http_get(bookUrl, { charset = "GBK" })
+    if not r.success then return nil end
+    local el = html_select_first(r.body, ".infolist li:nth-child(2)")
+    return el and el.text or nil
 end
 
--- ── Текст главы ──────────────────────────────────────────────────────────────
+-- ── Текст главы ─────────────────────────────────────────────────────────────
 
 function getChapterText(html)
-    -- Важно: html приходит в UTF-8 уже от самого приложения после загрузки страницы
-    -- Но если внутри есть мета-теги с GBK, Jsoup может запутаться.
-    local cleaned = html_remove(html, "h1", "div.txtinfo", "div.bottom-ad", "div.bottem2", "script")
-    
-    -- 69shuba часто прячет текст в div.txtnav
-    local content = html_select_first(cleaned, "div.txtnav")
-    
-    if content then
-        -- Используем html_text для корректного извлечения текста с сохранением переносов
-        return html_text(content.html)
+    -- Пытаемся получить URL текущей страницы из HTML
+    local pageUrl = html_attr(html, "link[rel='canonical']", "href")
+    if pageUrl == "" then
+        pageUrl = html_attr(html, "meta[property='og:url']", "content")
     end
+
+    -- Если нашли URL — перезагружаем страницу с правильной кодировкой
+    if pageUrl ~= "" then
+        local r = http_get(pageUrl, { charset = "GBK" })
+        if r.success then
+            html = r.body
+        end
+    end
+
+    -- Очистка от мусора
+    local cleaned = html_remove(html,
+        "h1", "div.txtinfo", "div.bottom-ad", "div.bottem2", ".visible-xs", "script"
+    )
     
-    return ""
-end
+    local el = html_select_first(cleaned, "div.txtnav")
+    if not el then return "" end
+
+    return html_text(el.html)
+end 

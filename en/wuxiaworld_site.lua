@@ -1,139 +1,162 @@
--- WuxiaWorld.site Lua Plugin
--- Migrated from Kotlin native source
+﻿-- ── Метаданные ────────────────────────────────────────────────────────────────
+id       = "wuxia_world_site"
+name     = "WuxiaWorld.site"
+version  = "1.0.0"
+baseUrl  = "https://wuxiaworld.site/"
+language = "en"
+icon     = "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/wuxiaworld.site.png"
 
-return {
-    id = "wuxia_world_site",
-    name = "WuxiaWorld.site",
-    version = "1.0.0",
-    language = "en",
-    baseUrl = "https://wuxiaworld.site",
-    -- icon will be loaded from yaml config
+-- ── Хелперы ───────────────────────────────────────────────────────────────────
 
-    -- Catalog
-    getCatalogList = function(index)
-        local page = index + 1
-        local url = "https://wuxiaworld.site/novel/?m_orderby=trending"
-        if page > 1 then url = url .. "&page=" .. page end
-        
-        local res = http_get(url)
-        if not res.success then return { items = {}, hasNext = false } end
-        
-        local doc = html_parse(res.body)
-        local items = html_select(doc, ".page-item-detail")
-        local books = {}
-        
-        for i = 1, #items do
-            local item = items[i]
-            local titleElem = html_select(item, ".post-title h3 a")[1]
-            local coverElem = html_select(item, ".c-image-hover img")[1]
-            
-            if titleElem then
-                table.insert(books, {
-                    title = titleElem:get_text(),
-                    url = titleElem.href,
-                    cover = coverElem and (coverElem:attr("data-src") or coverElem.src) or ""
-                })
-            end
-        end
-        
-        return { items = books, hasNext = #books > 0 }
-    end,
+local function absUrl(href)
+  if not href or href == "" then return "" end
+  if string_starts_with(href, "http") then return href end
+  if string_starts_with(href, "//") then return "https:" .. href end
+  return url_resolve(baseUrl, href)
+end
 
-    -- Search
-    getCatalogSearch = function(index, input)
-        local page = index + 1
-        local url = "https://wuxiaworld.site/?s=" .. url_encode(input) .. "&post_type=wp-manga"
-        if page > 1 then url = "https://wuxiaworld.site/page/" .. page .. "/?s=" .. url_encode(input) .. "&post_type=wp-manga" end
-        
-        local res = http_get(url)
-        if not res.success then return { items = {}, hasNext = false } end
-        
-        local doc = html_parse(res.body)
-        local items = html_select(doc, ".c-tabs-item__content")
-        local books = {}
-        
-        for i = 1, #items do
-            local item = items[i]
-            local titleElem = html_select(item, ".post-title h3 a")[1]
-            local coverElem = html_select(item, ".c-image-hover img")[1]
-            
-            if titleElem then
-                table.insert(books, {
-                    title = titleElem:get_text(),
-                    url = titleElem.href,
-                    cover = coverElem and (coverElem:attr("data-src") or coverElem.src) or ""
-                })
-            end
-        end
-        
-        return { items = books, hasNext = #books > 0 }
-    end,
+local function applyStandardContentTransforms(text)
+  if not text or text == "" then return "" end
+  text = string_normalize(text)
+  local domain = baseUrl:gsub("https?://", ""):gsub("^www%.", ""):gsub("/$", "")
+  text = regex_replace(text, "(?i)" .. domain .. ".*?\\n", "")
+  text = regex_replace(text, "(?i)\\A[\\s\\p{Z}\\uFEFF]*((Глава\\s+\\d+|Chapter\\s+\\d+)[^\\n\\r]*[\\n\\r\\s]*)+", "")
+  text = regex_replace(text, "(?im)^\\s*(Translator|Editor|Proofreader|Read\\s+(at|on|latest))[:\\s][^\\n\\r]{0,70}(\\r?\\n|$)", "")
+  text = string_trim(text)
+  return text
+end
 
-    -- Book Details
-    getBookTitle = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local title = html_select(doc, "h1")[1]
-        return title and title:get_text() or nil
-    end,
+-- ── Каталог ───────────────────────────────────────────────────────────────────
 
-    getBookCoverImageUrl = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local img = html_select(doc, ".summary_image img")[1]
-        return img and (img:attr("data-src") or img.src) or nil
-    end,
+function getCatalogList(index)
+  local page = index + 1
+  local url = "https://wuxiaworld.site/novel/?m_orderby=trending"
+  if page > 1 then url = url .. "&page=" .. tostring(page) end
 
-    getBookDescription = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local desc = html_select(doc, ".summary__content")[1]
-        return desc and desc:get_text() or nil
-    end,
+  local r = http_get(url)
+  if not r.success then return { items = {}, hasNext = false } end
 
-    -- Chapters: AJAX
-    getChapterList = function(url)
-        local ajaxUrl = url:gsub("/+$", "") .. "/ajax/chapters/"
-        local res = http_post(ajaxUrl, "", {
-            ["Content-Type"] = "application/x-www-form-urlencoded"
-        })
-        if not res.success then return {} end
-        
-        local doc = html_parse(res.body)
-        local links = html_select(doc, "li.wp-manga-chapter a[href]")
-        local chapters = {}
-        
-        -- WuxiaWorld returns newest-first, need to reverse
-        for i = #links, 1, -1 do
-            table.insert(chapters, {
-                title = links[i]:get_text(),
-                url = links[i].href
-            })
-        end
-        return chapters
-    end,
-
-    getChapterText = function(html)
-        local doc = html_parse(html)
-        local content = html_select(doc, ".reading-content")[1]
-        if content then
-            content:remove("script")
-            content:remove(".ads")
-            content:remove(".advertisement")
-            content:remove(".social-share")
-            return html_text(content)
-        end
-        return ""
-    end,
-
-    getChapterListHash = function(url)
-        local res = http_get(url)
-        if not res.success then return nil end
-        local doc = html_parse(res.body)
-        local btn = html_select(doc, "#btn-read-first")[1]
-        return btn and btn.href or nil
+  local items = {}
+  for _, card in ipairs(html_select(r.body, ".page-item-detail")) do
+    local titleEl = html_select_first(card.html, ".post-title h3 a")
+    if titleEl then
+      local bookUrl = absUrl(titleEl.href)
+      local cover   = html_attr(card.html, ".c-image-hover img", "data-src")
+      if cover == "" then cover = html_attr(card.html, ".c-image-hover img", "src") end
+      local t = string_clean(titleEl.text)
+      if bookUrl ~= "" and t ~= "" then
+        table.insert(items, { title = t, url = bookUrl, cover = absUrl(cover) })
+      end
     end
-}
+  end
+
+  return { items = items, hasNext = #items > 0 }
+end
+
+-- ── Поиск ─────────────────────────────────────────────────────────────────────
+
+function getCatalogSearch(index, query)
+  local page = index + 1
+  local url
+  if page == 1 then
+    url = baseUrl .. "?s=" .. url_encode(query) .. "&post_type=wp-manga"
+  else
+    url = baseUrl .. "page/" .. tostring(page) .. "/?s=" .. url_encode(query) .. "&post_type=wp-manga"
+  end
+
+  local r = http_get(url)
+  if not r.success then return { items = {}, hasNext = false } end
+
+  local items = {}
+  for _, card in ipairs(html_select(r.body, ".c-tabs-item__content")) do
+    local titleEl = html_select_first(card.html, ".post-title h3 a")
+    if titleEl then
+      local bookUrl = absUrl(titleEl.href)
+      local cover   = html_attr(card.html, ".c-image-hover img", "data-src")
+      if cover == "" then cover = html_attr(card.html, ".c-image-hover img", "src") end
+      local t = string_clean(titleEl.text)
+      if bookUrl ~= "" and t ~= "" then
+        table.insert(items, { title = t, url = bookUrl, cover = absUrl(cover) })
+      end
+    end
+  end
+
+  return { items = items, hasNext = #items > 0 }
+end
+
+-- ── Детали книги ──────────────────────────────────────────────────────────────
+
+function getBookTitle(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local el = html_select_first(r.body, "h1")
+  if el then return string_clean(el.text) end
+  return nil
+end
+
+function getBookCoverImageUrl(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local src = html_attr(r.body, ".summary_image img", "data-src")
+  if src == "" then src = html_attr(r.body, ".summary_image img", "src") end
+  if src ~= "" then return absUrl(src) end
+  return nil
+end
+
+function getBookDescription(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local el = html_select_first(r.body, ".summary__content")
+  if el then return string_trim(el.text) end
+  return nil
+end
+
+-- ── Список глав (POST AJAX) ───────────────────────────────────────────────────
+
+function getChapterList(bookUrl)
+  local ajaxUrl = bookUrl:gsub("/?$", "") .. "/ajax/chapters/"
+
+  local r = http_post(ajaxUrl, "", {
+    headers = {
+      ["Referer"] = bookUrl,
+      ["X-Requested-With"] = "XMLHttpRequest"
+    }
+  })
+  if not r.success then
+    log_error("wuxiaworld.site: AJAX failed " .. tostring(r.code))
+    return {}
+  end
+
+  local chapters = {}
+  for _, a in ipairs(html_select(r.body, "li.wp-manga-chapter a[href]")) do
+    local chUrl = absUrl(a.href)
+    local t = string_trim(a.text)
+    if chUrl ~= "" then
+      table.insert(chapters, { title = t, url = chUrl })
+    end
+  end
+
+  -- API отдаёт newest-first → разворачиваем
+  local reversed = {}
+  for i = #chapters, 1, -1 do table.insert(reversed, chapters[i]) end
+  return reversed
+end
+
+-- ── Хэш для обновлений ────────────────────────────────────────────────────────
+
+function getChapterListHash(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local el = html_select_first(r.body, "#btn-read-first")
+  if el then return el.href end
+  return nil
+end
+
+-- ── Текст главы ───────────────────────────────────────────────────────────────
+
+function getChapterText(html, url)
+  local cleaned = html_remove(html, "script", ".ads", ".advertisement", ".social-share")
+  local el = html_select_first(cleaned, ".reading-content")
+  if not el then return "" end
+  return applyStandardContentTransforms(html_text(el.html))
+end

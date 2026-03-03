@@ -1,6 +1,4 @@
--- NovelBin source plugin
--- Compatible with LuaJ (Lua 5.1) — no goto, no colon methods on table fields
-
+﻿-- ── Метаданные ────────────────────────────────────────────────────────────────
 id        = "NovelBin"
 name      = "Novel Bin"
 version   = "1.1.1"
@@ -8,7 +6,15 @@ baseUrl   = "https://novelbin.com/"
 language  = "en"
 icon      = "https://raw.githubusercontent.com/HnDK0/external-sources/main/icons/novelbin.png"
 
--- ── Helpers ───────────────────────────────────────────────────────────────────
+-- ── Хелперы ───────────────────────────────────────────────────────────────────
+
+local function absUrl(href)
+  if not href or href == "" then return "" end
+  if string_starts_with(href, "http") then return href end
+  if string_starts_with(href, "//") then return "https:" .. href end
+  return url_resolve(baseUrl, href)
+end
+
 local function transformCoverUrl(coverUrl, bookUrl)
   if not bookUrl or bookUrl == "" then return coverUrl end
   local slug = bookUrl:match("([^/]+)%.html$") or bookUrl:match("([^/]+)$")
@@ -18,37 +24,32 @@ local function transformCoverUrl(coverUrl, bookUrl)
   return coverUrl
 end
 
-local function buildCatalogUrl(index)
-  local page = index + 1
-  if page == 1 then
-    return baseUrl .. "sort/top-view-novel"
-  else
-    return baseUrl .. "sort/top-view-novel?page=" .. page
-  end
+local function applyStandardContentTransforms(text)
+  if not text or text == "" then return "" end
+  text = string_normalize(text)
+  local domain = baseUrl:gsub("https?://", ""):gsub("^www%.", ""):gsub("/$", "")
+  text = regex_replace(text, "(?i)" .. domain .. ".*?\\n", "")
+  text = regex_replace(text, "(?i)\\A[\\s\\p{Z}\\uFEFF]*((Глава\\s+\\d+|Chapter\\s+\\d+)[^\\n\\r]*[\\n\\r\\s]*)+", "")
+  text = regex_replace(text, "(?im)^\\s*(Translator|Editor|Proofreader|Read\\s+(at|on|latest))[:\\s][^\\n\\r]{0,70}(\\r?\\n|$)", "")
+  text = string_trim(text)
+  return text
 end
 
-local function buildSearchUrl(index, query)
-  local page = index + 1
-  if page == 1 then
-    return baseUrl .. "search?keyword=" .. url_encode(query)
-  else
-    return baseUrl .. "search?keyword=" .. url_encode(query) .. "&page=" .. page
-  end
-end
-
-local function parseCatalogItems(body)
+local function parseCatalogItems(body, useDataSrc)
   local items = {}
-  local rows = html_select(body, ".col-novel-main .row")
-  for _, row in ipairs(rows) do
-    local titleEls = html_select(row.html, ".novel-title a")
-    if titleEls[1] then
-      local currentUrl = titleEls[1].href
-      local cover = html_attr(row.html, "img[data-src]", "data-src")
+  for _, row in ipairs(html_select(body, ".col-novel-main .row")) do
+    local titleEl = html_select_first(row.html, ".novel-title a")
+    if titleEl then
+      local currentUrl = absUrl(titleEl.href)
+      local cover = ""
+      if useDataSrc then
+        cover = html_attr(row.html, "img[data-src]", "data-src")
+      end
       if cover == "" then
         cover = html_attr(row.html, "img[src]", "src")
       end
       table.insert(items, {
-        title = string_trim(titleEls[1].text),
+        title = string_trim(titleEl.text),
         url   = currentUrl,
         cover = transformCoverUrl(cover, currentUrl)
       })
@@ -57,44 +58,35 @@ local function parseCatalogItems(body)
   return items
 end
 
--- ── Catalog ───────────────────────────────────────────────────────────────────
+-- ── Каталог ───────────────────────────────────────────────────────────────────
 
 function getCatalogList(index)
-  local url = buildCatalogUrl(index)
+  local page = index + 1
+  local url = baseUrl .. "sort/top-view-novel"
+  if page > 1 then url = url .. "?page=" .. page end
+
   local r = http_get(url)
-  if not r.success then
-    log_error("getCatalogList failed: " .. url .. " code=" .. tostring(r.code))
-    return { items = {}, hasNext = false }
-  end
-  local items = parseCatalogItems(r.body)
+  if not r.success then return { items = {}, hasNext = false } end
+
+  local items = parseCatalogItems(r.body, true)
   return { items = items, hasNext = #items > 0 }
 end
+
+-- ── Поиск ─────────────────────────────────────────────────────────────────────
 
 function getCatalogSearch(index, query)
-  local url = buildSearchUrl(index, query)
+  local page = index + 1
+  local url = baseUrl .. "search?keyword=" .. url_encode(query)
+  if page > 1 then url = url .. "&page=" .. page end
+
   local r = http_get(url)
-  if not r.success then
-    log_error("getCatalogSearch failed: " .. url)
-    return { items = {}, hasNext = false }
-  end
-  local items = {}
-  local rows = html_select(r.body, ".col-novel-main .row")
-  for _, row in ipairs(rows) do
-    local titleEls = html_select(row.html, ".novel-title a")
-    if titleEls[1] then
-      local currentUrl = titleEls[1].href
-      local cover = html_attr(row.html, "img[src]", "src")
-      table.insert(items, {
-        title = string_trim(titleEls[1].text),
-        url   = currentUrl,
-        cover = transformCoverUrl(cover, currentUrl)
-      })
-    end
-  end
+  if not r.success then return { items = {}, hasNext = false } end
+
+  local items = parseCatalogItems(r.body, false)
   return { items = items, hasNext = #items > 0 }
 end
 
--- ── Book metadata ─────────────────────────────────────────────────────────────
+-- ── Детали книги ──────────────────────────────────────────────────────────────
 
 function getBookTitle(bookUrl)
   local r = http_get(bookUrl)
@@ -108,7 +100,7 @@ function getBookCoverImageUrl(bookUrl)
   local r = http_get(bookUrl)
   if not r.success then return nil end
   local url = html_attr(r.body, "meta[property='og:image']", "content")
-  if url ~= "" then return url end
+  if url ~= "" then return absUrl(url) end
   return nil
 end
 
@@ -120,15 +112,7 @@ function getBookDescription(bookUrl)
   return nil
 end
 
-function getChapterListHash(bookUrl)
-  local r = http_get(bookUrl)
-  if not r.success then return nil end
-  local el = html_select_first(r.body, ".l-chapter a.chapter-title")
-  if el then return el.href end
-  return nil
-end
-
--- ── Chapter list (AJAX) ───────────────────────────────────────────────────────
+-- ── Список глав (AJAX_BASED) ──────────────────────────────────────────────────
 
 function getChapterList(bookUrl)
   local r = http_get(bookUrl)
@@ -150,8 +134,6 @@ function getChapterList(bookUrl)
   end
 
   local ajaxUrl = "https://novelbin.com/ajax/chapter-archive?novelId=" .. m[1]
-  log_info("getChapterList AJAX: " .. ajaxUrl)
-
   local ar = http_get(ajaxUrl)
   if not ar.success then
     log_error("getChapterList: AJAX failed code=" .. tostring(ar.code))
@@ -159,28 +141,30 @@ function getChapterList(bookUrl)
   end
 
   local chapters = {}
-  local links = html_select(ar.body, "ul.list-chapter li a")
-  for _, a in ipairs(links) do
+  for _, a in ipairs(html_select(ar.body, "ul.list-chapter li a")) do
     local title = string_trim(a.text)
     if title == "" then title = a.href end
     table.insert(chapters, { title = title, url = a.href })
   end
 
-  log_info("getChapterList: loaded " .. #chapters .. " chapters")
   return chapters
 end
 
--- ── Chapter text ──────────────────────────────────────────────────────────────
+-- ── Хэш для обновлений ────────────────────────────────────────────────────────
+
+function getChapterListHash(bookUrl)
+  local r = http_get(bookUrl)
+  if not r.success then return nil end
+  local el = html_select_first(r.body, ".l-chapter a.chapter-title")
+  if el then return el.href end
+  return nil
+end
+
+-- ── Текст главы ───────────────────────────────────────────────────────────────
 
 function getChapterText(html)
-  local cleaned = html_remove(html, "script", ".ads", "h3", ".chapter-warning", ".ad-insert")
+  local cleaned = html_remove(html, "script", "style", ".ads", "h3", ".chapter-warning", ".ad-insert")
   local el = html_select_first(cleaned, "#chr-content")
-  if el then return html_text(el.html) end
-  el = html_select_first(cleaned, ".chr-c")
-  if el then return html_text(el.html) end
-  el = html_select_first(cleaned, "#chapter-content")
-  if el then return html_text(el.html) end
-  el = html_select_first(cleaned, ".chapter-content")
-  if el then return html_text(el.html) end
-  return ""
+  if not el then return "" end
+  return applyStandardContentTransforms(html_text(el.html))
 end
