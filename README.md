@@ -1,10 +1,6 @@
-﻿# NoveLA Lua Plugin Guide — Полное руководство (v4)
+﻿# NoveLA Lua Plugin Guide — Полное руководство
 
 > **Цель:** Самодостаточный документ. Имея только его, можно написать полнофункциональный плагин без доступа к исходному коду. Основан на анализе 27 нативных источников, изучении LuaSourceLoader.kt и реальном опыте отладки.
->
-> **v4:** Добавлены `string_clean` (normalize + collapse whitespace + trim) и `http_get_batch` (параллельная загрузка страниц глав). Обновлены Best Practices, антипаттерны, раздел списка глав.
->
-> **v3:** Обновлена архитектура настроек (фабрика + подкласс), `google_translate` получил обязательный аргумент `origin`, язык `"mul"` отображается как "Multilanguage" через `getLanguageDisplayName`, иконка плагина: YAML приоритетнее Lua.
 
 ---
 
@@ -731,10 +727,10 @@ end
 
 ```lua
 function getChapterText(html, url)
-  local cleaned = html_remove(html, "script", "style", ".ads", ".banner", "h3")
-  local el = html_select_first(cleaned, "#chapter-content, .chapter-content, .content")
-  if el then return html_text(el.html) end
-  return ""
+  local cleaned = html_remove(html, "script", "style", ".ads", "h3", ".chapter-warning", ".ad-insert")
+  local el = html_select_first(cleaned, "#chr-content")
+  if not el then return "" end
+  return applyStandardContentTransforms(html_text(el.html))
 end
 ```
 
