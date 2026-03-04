@@ -1174,7 +1174,6 @@ repository/
 
 **Глобальный `index.yaml`:**
 ```yaml
-count: 3
 sources:
   - lang: en
     index: https://raw.githubusercontent.com/.../en/index.yaml
