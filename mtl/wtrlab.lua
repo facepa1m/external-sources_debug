@@ -331,24 +331,37 @@ function getChapterText(html, chapterUrl)
 
     local resolvedBody = decryptBody(rawBody)
 
+    -- ── Глоссарий ─────────────────────────────────────────────────────────────
     local glossary = {}
     if data.glossary_data and data.glossary_data.terms then
         local terms = data.glossary_data.terms
+        log_info("wtrlab: glossary terms count=" .. tostring(#terms))
         for i = 1, #terms do
             local termEntry = terms[i]
-            if type(termEntry) == "table" and termEntry[1] and termEntry[1] ~= "" then
-                glossary[i - 1] = termEntry[1]
+            if type(termEntry) == "table" then
+                local termValue = termEntry[1] or ""
+                log_info("wtrlab: glossary[" .. tostring(i - 1) .. "] = '" .. termValue .. "'")
+                if termValue ~= "" then
+                    glossary[i - 1] = termValue
+                end
             end
         end
+    else
+        log_info("wtrlab: no glossary_data in response")
     end
 
+    -- ── Патчи ─────────────────────────────────────────────────────────────────
     local patches = {}
     if data.patch then
+        log_info("wtrlab: patches count=" .. tostring(#data.patch))
         for _, patchItem in ipairs(data.patch) do
             if patchItem.zh and patchItem.en and patchItem.zh ~= "" then
+                log_info("wtrlab: patch '" .. patchItem.zh .. "' → '" .. patchItem.en .. "'")
                 table.insert(patches, { zh = patchItem.zh, en = patchItem.en })
             end
         end
+    else
+        log_info("wtrlab: no patches in response")
     end
 
     local paragraphs = buildParagraphs(rawBody, resolvedBody, glossary, patches)
